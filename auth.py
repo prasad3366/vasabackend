@@ -268,3 +268,129 @@ def dashboard():
         return jsonify({'message': f'Welcome Customer {username}!'}), 200
     else:
         return jsonify({'error': 'Unknown role'}), 403
+
+
+# =============================================
+# 1. GET MY PROFILE - Only Own Data
+# =============================================
+@auth_bp.route('/profile', methods=['GET'])
+def get_my_profile():
+    payload, error_response, status_code = verify_customer_token(request)
+    if error_response:
+        return error_response, status_code
+
+    user_id = payload['user_id']
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT id, username, email, phone_number, role_id, created_at 
+            FROM users WHERE id = %s
+        """, (user_id,))
+        user = cursor.fetchone()
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        role_name = "Admin" if user['role_id'] == 1 else "Customer"
+
+        return jsonify({
+            "message": "Profile fetched successfully",
+            "profile": {
+                "id": user['id'],
+                "username": user['username'],
+                "email": user['email'],
+                "phone_number": user['phone_number'],
+                "role": role_name,
+                "role_id": user['role_id'],
+                "created_at": user['created_at'].strftime("%Y-%m-%d %H:%M:%S") if user['created_at'] else None
+            }
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Get profile error: {e}")
+        return jsonify({"error": "Server error"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# =============================================
+# 2. UPDATE PROFILE - Email, Phone, Password
+# =============================================
+@auth_bp.route('/profile/update', methods=['PUT'])
+def update_profile():
+    payload, error_response, status_code = verify_customer_token(request)
+    if error_response:
+        return error_response, status_code
+
+    user_id = payload['user_id']
+    data = request.get_json()
+
+    new_email = data.get('email')
+    new_phone = data.get('phone_number')
+    new_password = data.get('password')
+    confirm_password = data.get('confirm_password')
+
+    if not any([new_email, new_phone, new_password]):
+        return jsonify({"error": "Provide at least one field to update"}), 400
+
+    if new_password:
+        if new_password != confirm_password:
+            return jsonify({"error": "Passwords do not match"}), 400
+        if len(new_password) < 6:
+            return jsonify({"error": "Password too short"}), 400
+        password_hash = generate_password_hash(new_password)
+    else:
+        password_hash = None
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        updates = []
+        params = []
+
+        if new_email:
+            if '@' not in new_email:
+                return jsonify({"error": "Invalid email"}), 400
+            updates.append("email = %s")
+            params.append(new_email)
+
+        if new_phone:
+            updates.append("phone_number = %s")
+            params.append(new_phone)
+
+        if password_hash:
+            updates.append("password_hash = %s")
+            params.append(password_hash)
+
+        params.append(user_id)
+        query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s"
+
+        cursor.execute(query, params)
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({"error": "Nothing updated"}), 400
+
+        return jsonify({
+            "message": "Profile updated successfully!",
+            "updated": {"email": bool(new_email), "phone": bool(new_phone), "password": bool(new_password)}
+        }), 200
+
+    except pymysql.err.IntegrityError as e:
+        if "email_unique" in str(e):
+            return jsonify({"error": "Email already taken"}), 409
+        if "phone_unique" in str(e):
+            return jsonify({"error": "Phone number already taken"}), 409
+        return jsonify({"error": "Update failed"}), 400
+
+    except Exception as e:
+        logger.error(f"Update error: {e}")
+        return jsonify({"error": "Server error"}), 500
+    finally:
+        cursor.close()
+        conn.close()

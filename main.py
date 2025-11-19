@@ -3,7 +3,8 @@ from flask import Flask, send_from_directory
 from auth import auth_bp
 from perfumes import perfumes_bp
 from cart import cart_bp
-from favorites import favorites_bp          # ← NEW: Favorites blueprint
+from favorites import favorites_bp   
+from revenue import revenue_bp       # ← NEW: Favorites blueprint
 from flask_cors import CORS
 import logging
 
@@ -18,8 +19,8 @@ app = Flask(__name__, static_folder='../frontend')
 CORS(app, resources={
     r"/*": {
         "origins": [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173"
+            "http://localhost:5174",
+            "http://127.0.0.1:5174"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
@@ -34,7 +35,8 @@ CORS(app, resources={
 app.register_blueprint(auth_bp)          # → /login, /register
 app.register_blueprint(perfumes_bp)      # → /perfumes, /perfumes/photo/1
 app.register_blueprint(cart_bp)          # → /cart, /cart/5
-app.register_blueprint(favorites_bp)     # → /favorites, /favorites/1
+app.register_blueprint(favorites_bp)  
+app.register_blueprint(revenue_bp)   # → /favorites, /favorites/1
 
 # ========================================
 # Serve Frontend (Vite)
